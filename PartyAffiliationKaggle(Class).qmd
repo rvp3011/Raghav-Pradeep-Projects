@@ -1,0 +1,96 @@
+---
+title: "Take Home Final Classification"
+author: "Raghav Pradeep"
+format: 
+  html:
+    code-fold: true
+    code-line-numbers: true
+    code-tools: true
+    self-contained: true
+execute:
+  message: false
+  echo: false
+  eval: true
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+from sklearn.pipeline import Pipeline
+from sklearn.compose import make_column_selector, ColumnTransformer
+from sklearn.compose import make_column_selector as selector
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.linear_model import LogisticRegression
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+from sklearn.model_selection import cross_val_score
+from sklearn.svm import SVC
+import matplotlib.pyplot as plt
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
+import warnings
+df = pd.read_csv("CAH-201803-train.csv")
+warnings.filterwarnings("ignore")
+df_test = pd.read_csv("CAH-201803-test.csv")
+df.info()
+```
+
+```{python}
+
+df["Party"] = df["political_affiliation"].map({
+    "Republican": 0,
+    "Democrat": 1,
+    "Independent": 2
+})
+
+X = df.drop(['Party', 'political_affiliation'], axis=1)
+y = df["Party"]
+```
+
+```{python}
+num = selector(dtype_include=['number'])
+cat = selector(dtype_include=['object'])
+ct = ColumnTransformer(
+ [
+    ('num', StandardScaler(), num),            
+    ('cat', OneHotEncoder(drop='first', handle_unknown='ignore'), cat)  
+], remainder='passthrough')
+
+log_pipe = Pipeline([
+('preprocessing', ct),    
+("log", LogisticRegression())
+])
+
+param_grid_log = {"log__C": [0.001, 0.01, 0.1, 1, 10], 
+"log__solver": ["saga"], "log__penalty": ["elasticnet"], "log__l1_ratio": [0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 1.0]
+}
+
+
+grid_log = GridSearchCV(log_pipe, param_grid_log, cv=10, scoring="accuracy")
+
+grid_log.fit(X, y)
+best_log = grid_log.best_estimator_
+
+
+print("Best LogReg params:", grid_log.best_params_)
+print("Best LogReg cv metric:", grid_log.best_score_)
+```
+
+
+```{python}
+y_pred_log = best_log.predict(df_test)
+
+inv_map = {
+    0: "Republican",
+    1: "Democrat",
+    2: "Independent"
+}
+y_pred_labels = pd.Series(y_pred_log).map(inv_map)
+pred_df = pd.DataFrame({
+   'id_num': df_test['id_num'],
+   "political_affiliation_predicted": y_pred_labels
+})
+pred_df.to_csv('RealFinalclass_fileupdated.csv', index=False)
+```

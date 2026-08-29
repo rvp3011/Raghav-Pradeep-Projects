@@ -1,0 +1,91 @@
+---
+title: "Take Home Final Regression"
+author: "Raghav Pradeep"
+format: 
+  html:
+    code-fold: true
+    code-line-numbers: true
+    code-tools: true
+    self-contained: true
+execute:
+  message: false
+  echo: false
+  eval: true
+---
+<https://github.com/rvp3011/Lab0>
+```{python}
+import pandas as pd
+import numpy as np
+from sklearn.pipeline import Pipeline
+from sklearn.compose import make_column_selector, ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import r2_score
+from sklearn.compose import make_column_selector as selector
+from sklearn.model_selection import GridSearchCV, cross_val_score
+import warnings
+df = pd.read_csv("train_new.csv")
+df = df.dropna()
+df['GrLivArea_sq'] = df['Gr Liv Area'] ** 2
+warnings.filterwarnings("ignore")
+#pd.set_option('display.max_rows', 84)
+df_test = pd.read_csv("test_new.csv")
+df_test['GrLivArea_sq'] = df_test['Gr Liv Area'] ** 2
+#df.info()
+```
+```{python}
+X = df.drop(['SalePrice', 'Yr Sold', 'TotRms AbvGrd', 'Pool Area', 'PID', 'Lot Frontage', 'Half Bath', 'Full Bath'], axis=1)
+y = df['SalePrice']
+
+num = selector(dtype_include=['number'])
+cat = selector(dtype_include=['object'])
+ct = ColumnTransformer(
+ [
+    ('num', StandardScaler(), num),            
+    ('cat', OneHotEncoder(drop='first', handle_unknown='ignore'), cat)  
+], remainder='passthrough') 
+
+pipe_elastic = Pipeline([
+    ('preprocessing', ct),
+    ("elastic_regression", ElasticNet())
+])
+
+
+param_grid = {
+    "elastic_regression__alpha": [0.001, 0.01, 0.1, 1, 10, 100, 1000],
+    "elastic_regression__l1_ratio": [0.1, 0.2,0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+}
+gscv = GridSearchCV(pipe_elastic, param_grid, cv=10, scoring='neg_mean_squared_error')
+y_log = np.log(y)
+gscv_fitted = gscv.fit(X, y_log)
+pipe_elastic = gscv_fitted.best_estimator_ 
+pre = pipe_elastic.named_steps['preprocessing']        
+lr  = pipe_elastic.named_steps['elastic_regression']  
+
+
+feature_names = pre.get_feature_names_out()   
+
+coef_df = pd.DataFrame({
+    'feature': feature_names,
+    'coef': lr.coef_
+})
+coef_df['abs_coef'] = coef_df['coef'].abs()
+#print(coef_df.sort_values('abs_coef', ascending=False))
+mse_elastic = -gscv_fitted.best_score_      
+rmse_elastic = np.sqrt(mse_elastic)
+print("Elastic:", rmse_elastic)
+```
+
+```{python}
+X_test = df_test.drop(['Yr Sold', 'TotRms AbvGrd', 'Pool Area', 'PID', 'Lot Frontage', 'Half Bath', 'Full Bath'], axis=1)
+
+y_pred_log = pipe_elastic.predict(X_test)  
+y_final_pred = np.exp(y_pred_log)
+pred_df = pd.DataFrame({
+    'PID': df_test['PID'],
+    'SalePrice': y_final_pred
+})
+pred_df.to_csv('finalpred_file1.csv', index=False)
+```
+
